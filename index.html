@@ -22,51 +22,104 @@
     <h1 class="title">Configuration</h1>
     <form id="oauthForm">
         <div class="field">
-            <label class="label" for="idp_base_url">IdP Base Url</label>
+            <label class="label" for="idp_base_url">Auth Server</label>
             <div class="control">
-                <input class="input" type="text" id="idp_base_url" name="idp_base_url" value="https://my-idp/" required>
+                <input class="input" type="text" id="idp_base_url" name="idp_base_url" onChange="updateAuthUrl()"
+                       value="https://my-idp/" required>
             </div>
         </div>
 
         <div class="field">
-            <label class="label" for="client_id">Client ID:</label>
+            <label class="label" for="client_id">Client ID</label>
             <div class="control">
-                <input class="input" type="text" id="client_id" name="client_id" value="ClientId" required>
+                <input class="input" type="text" id="client_id" name="client_id" onChange="updateAuthUrl()"
+                       value="ClientId" required>
             </div>
         </div>
 
         <div class="field">
-            <label class="label" for="redirect_uri">Redirect URI:</label>
+            <label class="label" for="redirect_uri">Redirect URI</label>
             <div class="control">
-                <input class="input" type="text" id="redirect_uri" name="redirect_uri" value="http://localhost:3000/callback" required>
+                <input class="input" type="text" id="redirect_uri" name="redirect_uri" onChange="updateAuthUrl()"
+                       value="http://localhost:3000/callback" required>
             </div>
         </div>
+
+        <div class="field">
+            <label class="label" for="response_type">Response Type</label>
+            <div class="control">
+                <div class="select is-link">
+                    <select disabled id="response_type">
+                        <option>code</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="field">
+            <label class="label" for="response_mode">Response Mode</label>
+            <div class="control">
+                <div class="select is-link">
+                    <select disabled id="response_mode">
+                        <option>web_message</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="field">
+            <label class="label" for="pkce">Use PKCE</label>
+            <label class="checkbox">
+                <input type="checkbox" id="pkce" onChange="updateAuthUrl()"/>
+                Enable use of PKCE
+            </label>
+        </div>
+
 
         <div class="field is-grouped">
             <div class="control">
-                <button class="button is-primary" type="button" id="openChild" onclick="loginWithPopup()">Authorize</button>
+                <button class="button is-primary" type="button" id="openChild" onclick="loginWithPopup()">Authorize
+                </button>
             </div>
         </div>
+
+        <p>Clicking on the button will open this <a id="authUrl" href="">link</a></p>
     </form>
 </section>
 
-<p id="message"></p>
-<p id="code"></p>
-<p id="data"></p>
+<section class="section">
+    <div class="content">
+        <h1 class="title">Authorization Code</h1>
+        <p id="message">Waiting for data via message event...</p>
+        <p id="code"></p>
+        <p id="data"></p>
+        <button class="button is-primary" type="button" id="exchangeToken" disabled onclick="exchangeCodeForToken()">
+            Exchange
+            Code for
+            Token
+        </button>
+    </div>
+</section>
 
-<button class="button" type="button" id="exchangeToken" style="display:none;" onclick="exchangeCodeForToken()">Exchange
-    Code for
-    Token
-</button>
-<p id="idToken"></p>
 
-<button type="button" id="parseToken" style="display:none;" onclick="parseJWT()">Parse JWT Token</button>
-<pre id="parsedToken"></pre>
+<section class="section">
+    <div class="content">
+        <h1 class="title">Id Token</h1>
+        <p id="idToken">Waiting...</p>
+
+        <button class="button is-primary" type="button" id="parseToken" disabled onclick="parseJWT()">Parse JWT Token
+        </button>
+        <p id="parsedToken"></p>
+    </div>
+</section>
+
 
 <script>
-    let state, codeVerifier, authorizationCode;
+    let state = generateState()
+    let codeVerifier, authorizationCode;
 
-    async function generateState() {
+    function generateState() {
         const randomArrayBuffer = crypto.getRandomValues(new Uint8Array(64));
         return base64UrlEncode(randomArrayBuffer);
     }
@@ -88,13 +141,15 @@
             .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     }
 
-    async function loginWithPopup() {
+    async function updateAuthUrl() {
+        const url = await generateAuthorizationUrl()
+        document.getElementById('authUrl').href = url
+    }
+
+    async function generateAuthorizationUrl() {
         const clientId = document.getElementById('client_id').value;
         const redirectUri = encodeURIComponent(document.getElementById('redirect_uri').value);
-        state = await generateState();
-        const pkce = await generatePKCE();
-        codeVerifier = pkce.codeVerifier;
-        const codeChallenge = pkce.codeChallenge;
+
 
         let idpUrl = document.getElementById('idp_base_url').value
 
@@ -102,7 +157,7 @@
             idpUrl = idpUrl + '/'
         }
 
-        const url = `${idpUrl}` +
+        let url = `${idpUrl}` +
             `authorize` +
             `?state=${state}` +
             `&client_id=${clientId}` +
@@ -113,14 +168,34 @@
             `&authorizeTimeoutInSeconds=1200` +
             `&response_type=code` +
             `&response_mode=web_message` +
-            `&nonce=${state}` +
-            `&code_challenge=${codeChallenge}` +
-            `&code_challenge_method=S256`;
+            `&nonce=${state}`;
+
+        const pkceEnabled = document.getElementById('pkce').checked;
+
+        if (pkceEnabled) {
+            const pkce = await generatePKCE();
+            codeVerifier = pkce.codeVerifier;
+            const codeChallenge = pkce.codeChallenge;
+
+            url = url +
+                `&code_challenge=${codeChallenge}` +
+                `&code_challenge_method=S256`;
+        }
+
+        return url;
+    }
+
+    async function loginWithPopup() {
+
+        const url = await generateAuthorizationUrl()
+
+        console.log("Opening", url)
 
 
-        const childWindow = window.open(url, 'childWindow', 'width=600,height=400');
+        window.open(url, 'childWindow', 'width=600,height=400');
 
         window.addEventListener('message', function (event) {
+            console.log("###event", event)
             try {
                 if (authorizationCode) {
                     return
@@ -132,9 +207,9 @@
                         console.log("Received code from OAuth Login")
                         authorizationCode = response.code;
                         document.getElementById('message').innerText = 'Received code from OAuth Login';
-                        document.getElementById('data').innerText = JSON.stringify(messageData);
+                        document.getElementById('data').innerText = JSON.stringify(messageData, null, 2);
                         document.getElementById('code').innerText = authorizationCode;
-                        document.getElementById('exchangeToken').style.display = 'block';
+                        document.getElementById('exchangeToken').disabled = false
                     } else {
                         document.getElementById('data').innerText = "Authorization response received but no code found";
                     }
@@ -151,9 +226,14 @@
     async function exchangeCodeForToken() {
         const clientId = document.getElementById('client_id').value;
         const redirectUri = document.getElementById('redirect_uri').value;
-        const idpUrl = document.getElementById('idp_base_url').value
 
-        const tokenUrl = `${idpUrl}/oauth/token`;
+        let idpUrl = document.getElementById('idp_base_url').value
+
+        if (!idpUrl.endsWith('/')) {
+            idpUrl = idpUrl + '/'
+        }
+
+        const tokenUrl = `${idpUrl}oauth/token`;
 
         const response = await fetch(tokenUrl, {
             method: 'POST',
@@ -171,32 +251,37 @@
 
         const data = await response.json();
         if (response.ok) {
-            document.getElementById('idToken').innerText = `ID Token: ${data.id_token}`;
-            document.getElementById('parseToken').style.display = 'block';
+            document.getElementById('idToken').innerText = `${data.id_token}`;
+            document.getElementById('parseToken').disabled = false;
         } else {
             document.getElementById('idToken').innerText = `Error: ${data.error_description}`;
         }
     }
 
+    function decodeJwtToken(token) {
+        // taken from https://stackoverflow.com/a/38552302/8301780
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+
+        return JSON.parse(jsonPayload);
+    }
+
     function parseJWT() {
-        const idToken = document.getElementById('idToken').innerText.replace('ID Token: ', '');
+        const idToken = document.getElementById('idToken').innerText;
         if (!idToken) {
             document.getElementById('parsedToken').innerText = 'No ID Token found';
             return;
         }
 
-        const parts = idToken.split('.');
-        if (parts.length !== 3) {
-            document.getElementById('parsedToken').innerText = 'Invalid ID Token';
-            return;
-        }
+        const decodedToken = decodeJwtToken(idToken)
 
-        const header = JSON.parse(atob(parts[0]));
-        const payload = JSON.parse(atob(parts[1]));
-        const signature = parts[2];
-
-        document.getElementById('parsedToken').innerText = `Header: ${JSON.stringify(header, null, 2)}\n\nPayload: ${JSON.stringify(payload, null, 2)}\n\nSignature: ${signature}`;
+        document.getElementById('parsedToken').innerText = JSON.stringify(decodedToken, null, 2);
     }
+
+    updateAuthUrl()
 </script>
 
 </body>
