@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth Form</title>
+</head>
+<body>
+<form id="oauthForm">
+    <label for="idp_base_url">IdP Base Url</label>
+    <input type="text" id="idp_base_url" name="idp_base_url" value="https://my-idp/" required>
+    <br>
+    <label for="client_id">Client ID:</label>
+    <input type="text" id="client_id" name="client_id" value="ClientId" required>
+    <br>
+    <label for="redirect_uri">Redirect URI:</label>
+    <input type="text" id="redirect_uri" name="redirect_uri" value="http://localhost:3000/callback" required>
+    <br>
+    <button type="button" id="openChild" onclick="loginWithPopup()">Authorize</button>
+</form>
+
+<p id="message"></p>
+<p id="code"></p>
+<p id="data"></p>
+
+<button type="button" id="exchangeToken" style="display:none;" onclick="exchangeCodeForToken()">Exchange Code for Token</button>
+<p id="idToken"></p>
+
+<button type="button" id="parseToken" style="display:none;" onclick="parseJWT()">Parse JWT Token</button>
+<pre id="parsedToken"></pre>
+
+<script>
+    let state, codeVerifier, authorizationCode;
+
+    async function generateState() {
+        const randomArrayBuffer = crypto.getRandomValues(new Uint8Array(64));
+        return base64UrlEncode(randomArrayBuffer);
+    }
+
+    async function generatePKCE() {
+        const randomBuffer = crypto.getRandomValues(new Uint8Array(64));
+        const codeVerifier = base64UrlEncode(randomBuffer);
+
+        const codeVerifierBuffer = new TextEncoder().encode(codeVerifier);
+
+        const sha256Buffer = await crypto.subtle.digest('SHA-256', codeVerifierBuffer);
+        const codeChallenge = base64UrlEncode(sha256Buffer);
+
+        return { codeVerifier, codeChallenge };
+    }
+
+    function base64UrlEncode(arrayBuffer) {
+        return btoa(String.fromCharCode.apply(null, new Uint8Array(arrayBuffer)))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    async function loginWithPopup() {
+        const clientId = document.getElementById('client_id').value;
+        const redirectUri = encodeURIComponent(document.getElementById('redirect_uri').value);
+        state = await generateState();
+        const pkce = await generatePKCE();
+        codeVerifier = pkce.codeVerifier;
+        const codeChallenge = pkce.codeChallenge;
+
+        const idpUrl = document.getElementById('idp_base_url').value
+
+        const url = `${idpUrl}
+                /authorize
+                ?state=${state}
+                &client_id=${clientId}
+                &protocol=oauth2
+                &prompt=login
+                &scope=openid profile email
+                &redirect_uri=${redirectUri}
+                &authorizeTimeoutInSeconds=1200
+                &response_type=code
+                &response_mode=web_message
+                &nonce=${state}
+                &code_challenge=${codeChallenge}
+                &code_challenge_method=S256`;
+
+        const childWindow = window.open(url, 'childWindow', 'width=600,height=400');
+
+        window.addEventListener('message', function(event) {
+                try {
+                    if (authorizationCode) {
+                        return
+                    }
+                    const messageData = event.data;
+                    if (messageData.type === 'authorization_response') {
+                        const response = messageData.response;
+                        if (response.code) {
+                            console.log("Received code from OAuth Login")
+                            authorizationCode = response.code;
+                            document.getElementById('message').innerText = 'Received code from OAuth Login';
+                            document.getElementById('data').innerText = JSON.stringify(messageData);
+                            document.getElementById('code').innerText = authorizationCode;
+                            document.getElementById('exchangeToken').style.display = 'block';
+                        } else {
+                            document.getElementById('data').innerText = "Authorization response received but no code found";
+                        }
+                    } else {
+                        document.getElementById('message').innerText = `Received unknown message type: ${JSON.stringify(messageData)}`;
+                    }
+                } catch (error) {
+                    console.error('Error parsing message:', error);
+                    document.getElementById('message').innerText = "Error parsing message";
+                }
+        });
+    }
+
+    async function exchangeCodeForToken() {
+        const clientId = document.getElementById('client_id').value;
+        const redirectUri = document.getElementById('redirect_uri').value;
+        const idpUrl = document.getElementById('idp_base_url').value
+
+        const tokenUrl = `${idpUrl}/oauth/token`;
+
+        const response = await fetch(tokenUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                grant_type: 'authorization_code',
+                client_id: clientId,
+                code: authorizationCode,
+                redirect_uri: redirectUri,
+                code_verifier: codeVerifier
+            })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            document.getElementById('idToken').innerText = `ID Token: ${data.id_token}`;
+            document.getElementById('parseToken').style.display = 'block';
+        } else {
+            document.getElementById('idToken').innerText = `Error: ${data.error_description}`;
+        }
+    }
+
+    function parseJWT() {
+        const idToken = document.getElementById('idToken').innerText.replace('ID Token: ', '');
+        if (!idToken) {
+            document.getElementById('parsedToken').innerText = 'No ID Token found';
+            return;
+        }
+
+        const parts = idToken.split('.');
+        if (parts.length !== 3) {
+            document.getElementById('parsedToken').innerText = 'Invalid ID Token';
+            return;
+        }
+
+        const header = JSON.parse(atob(parts[0]));
+        const payload = JSON.parse(atob(parts[1]));
+        const signature = parts[2];
+
+        document.getElementById('parsedToken').innerText = `Header: ${JSON.stringify(header, null, 2)}\n\nPayload: ${JSON.stringify(payload, null, 2)}\n\nSignature: ${signature}`;
+    }
+</script>
+</body>
+</html>
