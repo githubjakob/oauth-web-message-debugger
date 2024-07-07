@@ -2,28 +2,62 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OAuth Form</title>
+    <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/bulma@1.0.1/css/bulma.min.css"
+    >
 </head>
 <body>
-<form id="oauthForm">
-    <label for="idp_base_url">IdP Base Url</label>
-    <input type="text" id="idp_base_url" name="idp_base_url" value="https://my-idp/" required>
-    <br>
-    <label for="client_id">Client ID:</label>
-    <input type="text" id="client_id" name="client_id" value="ClientId" required>
-    <br>
-    <label for="redirect_uri">Redirect URI:</label>
-    <input type="text" id="redirect_uri" name="redirect_uri" value="http://localhost:3000/callback" required>
-    <br>
-    <button type="button" id="openChild" onclick="loginWithPopup()">Authorize</button>
-</form>
+
+<section class="hero is-primary">
+    <div class="hero-body">
+        <p class="title">OAuth Web Message Debugger</p>
+        <p class="subtitle">Demo application to debug OAuth web message response type</p>
+    </div>
+</section>
+
+<section class="section">
+    <h1 class="title">Configuration</h1>
+    <form id="oauthForm">
+        <div class="field">
+            <label class="label" for="idp_base_url">IdP Base Url</label>
+            <div class="control">
+                <input class="input" type="text" id="idp_base_url" name="idp_base_url" value="https://my-idp/" required>
+            </div>
+        </div>
+
+        <div class="field">
+            <label class="label" for="client_id">Client ID:</label>
+            <div class="control">
+                <input class="input" type="text" id="client_id" name="client_id" value="ClientId" required>
+            </div>
+        </div>
+
+        <div class="field">
+            <label class="label" for="redirect_uri">Redirect URI:</label>
+            <div class="control">
+                <input class="input" type="text" id="redirect_uri" name="redirect_uri" value="http://localhost:3000/callback" required>
+            </div>
+        </div>
+
+        <div class="field is-grouped">
+            <div class="control">
+                <button class="button is-primary" type="button" id="openChild" onclick="loginWithPopup()">Authorize</button>
+            </div>
+        </div>
+    </form>
+</section>
 
 <p id="message"></p>
 <p id="code"></p>
 <p id="data"></p>
 
-<button type="button" id="exchangeToken" style="display:none;" onclick="exchangeCodeForToken()">Exchange Code for Token</button>
+<button class="button" type="button" id="exchangeToken" style="display:none;" onclick="exchangeCodeForToken()">Exchange
+    Code for
+    Token
+</button>
 <p id="idToken"></p>
 
 <button type="button" id="parseToken" style="display:none;" onclick="parseJWT()">Parse JWT Token</button>
@@ -46,7 +80,7 @@
         const sha256Buffer = await crypto.subtle.digest('SHA-256', codeVerifierBuffer);
         const codeChallenge = base64UrlEncode(sha256Buffer);
 
-        return { codeVerifier, codeChallenge };
+        return {codeVerifier, codeChallenge};
     }
 
     function base64UrlEncode(arrayBuffer) {
@@ -62,50 +96,55 @@
         codeVerifier = pkce.codeVerifier;
         const codeChallenge = pkce.codeChallenge;
 
-        const idpUrl = document.getElementById('idp_base_url').value
+        let idpUrl = document.getElementById('idp_base_url').value
 
-        const url = `${idpUrl}
-                /authorize
-                ?state=${state}
-                &client_id=${clientId}
-                &protocol=oauth2
-                &prompt=login
-                &scope=openid profile email
-                &redirect_uri=${redirectUri}
-                &authorizeTimeoutInSeconds=1200
-                &response_type=code
-                &response_mode=web_message
-                &nonce=${state}
-                &code_challenge=${codeChallenge}
-                &code_challenge_method=S256`;
+        if (!idpUrl.endsWith('/')) {
+            idpUrl = idpUrl + '/'
+        }
+
+        const url = `${idpUrl}` +
+            `authorize` +
+            `?state=${state}` +
+            `&client_id=${clientId}` +
+            `&protocol=oauth2` +
+            `&prompt=login` +
+            `&scope=openid profile email` +
+            `&redirect_uri=${redirectUri}` +
+            `&authorizeTimeoutInSeconds=1200` +
+            `&response_type=code` +
+            `&response_mode=web_message` +
+            `&nonce=${state}` +
+            `&code_challenge=${codeChallenge}` +
+            `&code_challenge_method=S256`;
+
 
         const childWindow = window.open(url, 'childWindow', 'width=600,height=400');
 
-        window.addEventListener('message', function(event) {
-                try {
-                    if (authorizationCode) {
-                        return
-                    }
-                    const messageData = event.data;
-                    if (messageData.type === 'authorization_response') {
-                        const response = messageData.response;
-                        if (response.code) {
-                            console.log("Received code from OAuth Login")
-                            authorizationCode = response.code;
-                            document.getElementById('message').innerText = 'Received code from OAuth Login';
-                            document.getElementById('data').innerText = JSON.stringify(messageData);
-                            document.getElementById('code').innerText = authorizationCode;
-                            document.getElementById('exchangeToken').style.display = 'block';
-                        } else {
-                            document.getElementById('data').innerText = "Authorization response received but no code found";
-                        }
-                    } else {
-                        document.getElementById('message').innerText = `Received unknown message type: ${JSON.stringify(messageData)}`;
-                    }
-                } catch (error) {
-                    console.error('Error parsing message:', error);
-                    document.getElementById('message').innerText = "Error parsing message";
+        window.addEventListener('message', function (event) {
+            try {
+                if (authorizationCode) {
+                    return
                 }
+                const messageData = event.data;
+                if (messageData.type === 'authorization_response') {
+                    const response = messageData.response;
+                    if (response.code) {
+                        console.log("Received code from OAuth Login")
+                        authorizationCode = response.code;
+                        document.getElementById('message').innerText = 'Received code from OAuth Login';
+                        document.getElementById('data').innerText = JSON.stringify(messageData);
+                        document.getElementById('code').innerText = authorizationCode;
+                        document.getElementById('exchangeToken').style.display = 'block';
+                    } else {
+                        document.getElementById('data').innerText = "Authorization response received but no code found";
+                    }
+                } else {
+                    document.getElementById('message').innerText = `Received unknown message type: ${JSON.stringify(messageData)}`;
+                }
+            } catch (error) {
+                console.error('Error parsing message:', error);
+                document.getElementById('message').innerText = "Error parsing message";
+            }
         });
     }
 
@@ -159,5 +198,6 @@
         document.getElementById('parsedToken').innerText = `Header: ${JSON.stringify(header, null, 2)}\n\nPayload: ${JSON.stringify(payload, null, 2)}\n\nSignature: ${signature}`;
     }
 </script>
+
 </body>
 </html>
