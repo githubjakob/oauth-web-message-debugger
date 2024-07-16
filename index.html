@@ -46,6 +46,20 @@
         </div>
 
         <div class="field">
+            <label class="label" for="extraQueryParamKey">Extra Query Param</label>
+            <div class="control">
+                <input class="input" type="text" id="extraQueryParamKey" name="extraQueryParam" onChange="updateAuthUrl()"
+                       value="Key">
+            </div>
+        </div>
+        <div class="field">
+            <div class="control">
+                <input class="input" type="text" id="extraQueryParamValue" name="extraQueryParam" onChange="updateAuthUrl()"
+                       value="Value">
+            </div>
+        </div>
+
+        <div class="field">
             <label class="label" for="response_type">Response Type</label>
             <div class="control">
                 <div class="select is-link">
@@ -180,6 +194,13 @@
             url = url +
                 `&code_challenge=${codeChallenge}` +
                 `&code_challenge_method=S256`;
+        }
+
+        const extraQueryKey = document.getElementById('extraQueryParamKey').value
+        const extraQueryValue = encodeURIComponent(document.getElementById('extraQueryParamValue').value)
+
+        if (extraQueryKey &&extraQueryValue ) {
+            url = url + `&${extraQueryKey}=${extraQueryValue}`
         }
 
         return url;
